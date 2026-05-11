@@ -78,19 +78,72 @@ fallback when other providers return nothing. Must credit Last.fm in the UI.
 
 ## Architecture
 
+### Storage model
+
+Lidarr uses a **two-layer model**: the database stores only URL strings; image bytes
+live exclusively on the filesystem.
+
+#### Database layer — URLs only
+
+`Album.Images` is a `TEXT` column in the `Albums` table holding a JSON-serialised
+`List<MediaCover>`. Each `MediaCover` object carries:
+
+```
+Url        string   — initially the remote origin URL from SkyHook
+RemoteUrl  string   — preserved copy of the original remote URL
+CoverType  enum     — Cover (6), Poster (1), Fanart (3), …
+Extension  string   — parsed from the URL on assignment (.jpg / .png)
+```
+
+The database **never stores image bytes**. It stores only the URL that was used as
+the download source.
+
+#### Filesystem layer — image bytes and resizes
+
+When `EnsureAlbumCovers()` runs it downloads the URL stored in `Album.Images` and
+writes the result to:
+
+```
+{appData}/MediaCover/Albums/{albumId}/cover.jpg       ← full resolution
+{appData}/MediaCover/Albums/{albumId}/cover-500.jpg   ← resized
+{appData}/MediaCover/Albums/{albumId}/cover-250.jpg   ← resized
+```
+
+`{appData}` defaults to `~/.config/Lidarr/` on Linux. `albumId` is the internal
+integer primary key (not the MusicBrainz MBID).
+
+Before downloading, `EnsureAlbumCovers()` issues an `HTTP HEAD` against the source
+URL and compares `Last-Modified` + `Content-Length` against the on-disk file. The
+download is skipped when these match, so the filesystem is the cache.
+
+#### Serving
+
+`MediaCoverController` handles `GET /MediaCover/Albums/{albumId}/cover.jpg` by
+calling `PhysicalFile()` directly from disk — no database read occurs at serve
+time. If a resized variant is missing it falls back to the full-size file.
+
+Before `AlbumResource` is returned by the API, `ConvertToLocalUrls()` rewrites
+each `MediaCover.Url` from its remote origin to the local `/MediaCover/…` path,
+so the frontend only ever sees local URLs.
+
+---
+
 ### How cover art flows today
 
 ```
 SkyHookProxy.GetAlbumInfo()
   └─ MapImage()               remote URL → MediaCover { CoverType=Cover, Url }
-       └─ Album.Images[]      stored as JSON blob in Albums table
+       └─ Album.Images[]      stored as URL-string JSON blob in Albums table
 
 RefreshAlbumService
-  └─ EnsureAlbumCovers()      downloads Album.Images[Cover].Url
-       └─ {appData}/MediaCover/Albums/{albumId}/cover.jpg   (+ -500, -250 resizes)
+  └─ EnsureAlbumCovers()
+       ├─ HEAD remote URL → compare Last-Modified + Content-Length vs disk
+       ├─ (if changed) download → {appData}/MediaCover/Albums/{albumId}/cover.jpg
+       └─ generate cover-500.jpg, cover-250.jpg resizes
 
 MediaCoverController
-  └─ GET /MediaCover/album/{id}/cover.jpg   serves the cached file
+  └─ GET /MediaCover/Albums/{id}/cover[-500|-250].jpg
+       └─ PhysicalFile() straight from disk
 
 AlbumControllerWithSignalR
   └─ ConvertToLocalUrls()     rewrites Url → /MediaCover/Albums/{id}/cover.jpg
@@ -109,15 +162,17 @@ AlbumControllerWithSignalR
        └─ returns merged, deduplicated List<CoverArtCandidate>
 
 [new] GET /api/v1/albums/{id}/coverartcandidates
-  └─ returns candidate list with proxied thumbnail URLs
+  └─ returns candidate list; ThumbnailUrls rewritten through proxy endpoint
 
 [new] PUT /api/v1/albums/{id}/coverart  { "coverUrl": "…" }
-  └─ Album.UserSelectedCoverUrl = coverUrl   (persisted to DB)
-  └─ EnsureAlbumCovers() re-runs immediately with the chosen URL
-  └─ SignalR broadcast → frontend cover updates live
+  ├─ Album.UserSelectedCoverUrl = coverUrl   (URL string persisted to DB)
+  ├─ EnsureAlbumCovers() downloads chosen URL to disk
+  │    └─ {appData}/MediaCover/Albums/{albumId}/cover.jpg  (+ resizes)
+  └─ SignalR broadcast → ConvertToLocalUrls() rewrites to /MediaCover/… path
+       └─ frontend sees updated cover with no special serving logic
 
 [new] DELETE /api/v1/albums/{id}/coverart
-  └─ clears UserSelectedCoverUrl, reverts to SkyHook default
+  └─ clears UserSelectedCoverUrl, EnsureAlbumCovers() re-downloads SkyHook default
 
 RefreshAlbumService (guarded)
   └─ if Album.UserSelectedCoverUrl is set → preserve it across refreshes
@@ -133,6 +188,10 @@ RefreshAlbumService (guarded)
 
 Adds a nullable `UserSelectedCoverUrl` TEXT column to the `Albums` table. `NULL`
 means "use SkyHook default".
+
+Following the same convention as `Album.Images`, this column stores a **URL string
+only** — never image bytes. The actual download to disk happens in
+`EnsureAlbumCovers()` exactly as it does for the SkyHook-supplied cover.
 
 ```csharp
 [Migration(081)]
@@ -376,6 +435,11 @@ public bool EnsureAlbumCovers(Album album)
 On download failure for a user-selected URL (404 / connection error after retries),
 log a warning, clear `UserSelectedCoverUrl`, and fall back to the first image in
 `album.Images` with `CoverType == Cover`.
+
+Once `EnsureAlbumCovers()` completes, the image is on disk at
+`{appData}/MediaCover/Albums/{albumId}/cover.jpg`. `ConvertToLocalUrls()` and
+`MediaCoverController` serve it through the standard `/MediaCover/Albums/{id}/…`
+path with no additional code — identical to the existing pipeline.
 
 ---
 
