@@ -566,7 +566,7 @@ in `GET` responses.
 | 19 | `src/Lidarr.Api.V1/MediaCovers/MediaCoverController.cs` | **Edit** — proxy endpoint |
 
 **Total: 15 new files, 4 edited files** across Core and Api layers.  
-Frontend changes are a separate workstream not covered by this plan.
+Frontend changes are covered in Phase 10 below.
 
 ---
 
@@ -597,3 +597,490 @@ Frontend changes are a separate workstream not covered by this plan.
 | Fuzzy search returning wrong albums (Spotify / iTunes / Last.fm / Discogs) | Results are presented to the user, not auto-applied; `ReleaseTitle` and `ReleaseUrl` give context for manual verification |
 | Spotify token expiry during a slow request | Token is proactively refreshed 60 s before expiry; 401 responses trigger an immediate re-fetch |
 | Last.fm placeholder images polluting results | Filter by known placeholder image hash before including in candidate list |
+
+---
+
+## Phase 10 — Frontend
+
+### Stack
+
+React 18 · Redux (redux-actions, redux-thunk) · CSS Modules · jQuery Ajax
+(`createAjaxRequest`) · FontAwesome 6 · TypeScript (`.tsx`/`.ts`/`.js` all
+supported via webpack). Older sections of the codebase use class components
+(including `AlbumDetails`); newer standalone pages use functional components with
+hooks. New code matches the surrounding file's style.
+
+All API calls go through `createAjaxRequest`, which automatically prepends the API
+root and injects the `X-Api-Key` header.
+
+Thumbnail images from external CDNs are always loaded through the backend proxy
+(`/api/v1/MediaCover/proxy?url=…`) to avoid CORS blocks in the browser.
+
+---
+
+### Phase 10.1 — Icon
+
+**File:** `src/Helpers/Props/icons.js`
+
+Add `faImage` to the existing FontAwesome solid imports block and export it:
+
+```js
+// in the solid imports:
+faImage as fasImage,
+
+// in the exports:
+export const COVER_ART = fasImage;
+```
+
+Used as the toolbar button icon on the Album Details page.
+
+---
+
+### Phase 10.2 — Translation keys
+
+**File:** `src/NzbDrone.Core/Localization/Core/en.json`
+
+Add the following keys (alphabetical order within the file):
+
+```json
+"CoverArt": "Cover Art",
+"CoverArtDiscogsToken": "Discogs Personal Access Token",
+"CoverArtDiscogsTokenHelpText": "Required for Discogs cover art. Get one at discogs.com/settings/developers",
+"CoverArtLastFmApiKey": "Last.fm API Key",
+"CoverArtLastFmApiKeyHelpText": "Optional fallback source. Get a key at last.fm/api/account/create",
+"CoverArtProviderSettings": "Cover Art Provider Settings",
+"CoverArtProviders": "Cover Art Providers",
+"CoverArtProvidersSettingsSummary": "Configure sources for album cover art candidates",
+"CoverArtSpotifyClientId": "Spotify Client ID",
+"CoverArtSpotifyClientIdHelpText": "Required for Spotify cover art. Create an app at developer.spotify.com",
+"CoverArtSpotifyClientSecret": "Spotify Client Secret",
+"CoverArtSpotifyClientSecretHelpText": "Write-only. Leave blank to keep the existing value",
+"FetchingCoverArtCandidates": "Fetching cover art candidates\u2026",
+"NoCoverArtCandidatesFound": "No cover art candidates found",
+"ResetCoverArtToDefault": "Reset to Default",
+"SelectCoverArt": "Select Cover Art",
+"SelectCoverArtForAlbum": "Select Cover Art for {albumTitle}"
+```
+
+---
+
+### Phase 10.3 — Redux: cover art candidates
+
+**New file:** `src/Store/Actions/coverArtActions.js`
+
+Top-level Redux action module (peer of `organizePreviewActions.js`).
+
+#### State shape — section `coverArt`
+
+```js
+{
+  isFetching:  false,
+  isPopulated: false,
+  error:       null,
+  isSaving:    false,   // true while PUT or DELETE is in-flight
+  saveError:   null,
+  items:       []       // List<CoverArtCandidateResource>
+}
+```
+
+#### Actions
+
+| Exported thunk/action | HTTP call | Purpose |
+|---|---|---|
+| `fetchCoverArtCandidates({ albumId })` | `GET /album/{id}/coverartcandidates` | Load candidate grid |
+| `selectCoverArt({ albumId, coverUrl })` | `PUT /album/{id}/coverart` `{ coverUrl }` | Pin chosen cover |
+| `resetCoverArt({ albumId })` | `DELETE /album/{id}/coverart` | Revert to SkyHook default |
+| `clearCoverArtCandidates()` | — | Clear state on modal close |
+
+`fetchCoverArtCandidates` uses `createFetchHandler(section, '/album')` with `id`
+set to `${albumId}/coverartcandidates`.
+
+`selectCoverArt` and `resetCoverArt` are hand-written thunks (like
+`TOGGLE_ALBUM_MONITORED` in `albumActions.js`): after a successful response they
+dispatch `updateItem({ section: 'albums', ...responseData })` so the album's
+`images` array refreshes in-place in the Redux store and `AlbumCover` re-renders
+immediately without a full page reload.
+
+`clearCoverArtCandidates` resets the section back to `defaultState` exactly like
+`clearOrganizePreview` does.
+
+**Register in:** `src/Store/Actions/index.js` — add
+`import * as coverArt from './coverArtActions'` and include `coverArt` in the
+exported array.
+
+---
+
+### Phase 10.4 — Redux: provider settings
+
+**New file:** `src/Store/Actions/Settings/coverArtProviderSettings.js`
+
+Exact structural copy of `metadataProvider.js`:
+
+```
+section  →  'settings.coverArtProviders'
+fetch    →  GET  /config/coverartproviders
+save     →  PUT  /config/coverartproviders
+setValue →  createAction with { section, ...payload }
+```
+
+**Register in:** `src/Store/Actions/settingsActions.js` — add
+`export * from './Settings/coverArtProviderSettings'` with the other re-exports.
+
+---
+
+### Phase 10.5 — Cover Art Picker Modal
+
+Four new files under `src/Album/CoverArt/`.
+
+#### `SelectCoverArtModal.js`
+
+Thin modal shell (mirrors `AlbumInteractiveSearchModal.js`):
+
+```jsx
+function SelectCoverArtModal({ isOpen, albumId, albumTitle, onModalClose }) {
+  return (
+    <Modal isOpen={isOpen} onModalClose={onModalClose}>
+      <SelectCoverArtModalConnector
+        albumId={albumId}
+        albumTitle={albumTitle}
+        onModalClose={onModalClose}
+      />
+    </Modal>
+  );
+}
+```
+
+#### `SelectCoverArtModalConnector.js`
+
+Connects to `state.coverArt`. Pattern: `OrganizePreviewModalContentConnector`.
+
+- `componentDidMount`: dispatches `fetchCoverArtCandidates({ albumId })`.
+- `componentWillUnmount`: dispatches `clearCoverArtCandidates()`.
+- `onSelectPress(coverUrl)`: dispatches `selectCoverArt({ albumId, coverUrl })`
+  then calls `onModalClose()`.
+- `onResetPress()`: dispatches `resetCoverArt({ albumId })` then calls
+  `onModalClose()`.
+- Maps `state.coverArt` → `{ isFetching, isPopulated, error, isSaving, items }`.
+
+#### `SelectCoverArtModalContent.js`
+
+Renders three states:
+
+1. **Loading** (`isFetching && !isPopulated`):
+   `<LoadingIndicator />` centered in the modal body.
+
+2. **Empty / error** (`isPopulated && items.length === 0`, or `error`):
+   `<Alert kind={kinds.WARNING}>{translate('NoCoverArtCandidatesFound')}</Alert>`
+
+3. **Grid** (`isPopulated && items.length > 0`):
+   A `className={styles.grid}` `<div>` containing one card per candidate:
+
+   ```
+   ┌───────────────────────┐
+   │   [source badge]      │  ← <Label> top-left, e.g. "iTunes"
+   │                       │
+   │   <img thumbnail>     │  ← 160×160, object-fit: cover
+   │                       │
+   │ resolution  [Select]  │  ← "3000×3000" + SpinnerButton
+   └───────────────────────┘
+   ```
+
+   The thumbnail `src` is the proxied URL:
+   `/api/v1/MediaCover/proxy?url=${encodeURIComponent(candidate.thumbnailUrl)}`
+
+   Source badge colour mapping:
+
+   | Source | `kinds` value |
+   |---|---|
+   | iTunes | `kinds.PRIMARY` |
+   | MusicBrainz | `kinds.INFO` |
+   | Discogs | `kinds.WARNING` |
+   | Spotify | `kinds.SUCCESS` |
+   | Last.fm | `kinds.DEFAULT` |
+
+   If `candidate.releaseUrl` is present, the card shows a small external-link
+   icon (`icons.EXTERNAL_LINK`) next to `candidate.releaseTitle` linking to
+   `candidate.releaseUrl` (satisfies Spotify attribution requirement).
+
+**Footer:**
+
+```jsx
+<ModalFooter>
+  <SpinnerButton
+    kind={kinds.DANGER}
+    isSpinning={isSaving}
+    onPress={onResetPress}
+  >
+    {translate('ResetCoverArtToDefault')}
+  </SpinnerButton>
+
+  <Button onPress={onModalClose}>
+    {translate('Close')}
+  </Button>
+</ModalFooter>
+```
+
+#### `SelectCoverArtModalContent.css`
+
+```css
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  padding: 4px;
+}
+
+.card {
+  position: relative;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--cardBackgroundColor);
+}
+
+.thumbnail {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  display: block;
+}
+
+.info {
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--textSecondaryColor);
+}
+
+.sourceBadge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+}
+
+.releaseLink {
+  display: block;
+  padding: 0 8px 6px;
+  font-size: 11px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--linkColor);
+}
+```
+
+---
+
+### Phase 10.6 — Provider Settings page
+
+Three new files under `src/Settings/CoverArt/`.
+
+#### `CoverArtSettings.js`
+
+Page wrapper — structural copy of `MetadataSettings.js`:
+
+```jsx
+class CoverArtSettings extends Component {
+  // manages _saveCallback, isSaving, hasPendingChanges state
+  // renders:
+  <PageContent title={translate('CoverArtProviderSettings')}>
+    <SettingsToolbarConnector ... />
+    <PageContentBody>
+      <CoverArtProviderSettingsConnector
+        onChildMounted={this.onChildMounted}
+        onChildStateChange={this.onChildStateChange}
+      />
+    </PageContentBody>
+  </PageContent>
+}
+```
+
+#### `CoverArtProviderSettingsConnector.js`
+
+Structural copy of `MetadataProviderConnector.js`:
+
+- `componentDidMount`: calls `dispatchFetchCoverArtProviderSettings()` and
+  `onChildMounted(dispatchSaveCoverArtProviderSettings)`.
+- `componentWillUnmount`: calls
+  `dispatchClearPendingChanges({ section: 'settings.coverArtProviders' })`.
+- Maps `state.settings.coverArtProviders` via `createSettingsSectionSelector`.
+
+#### `CoverArtProviderSettings.js`
+
+Form component with a single `<FieldSet legend={translate('CoverArtProviders')}>`:
+
+```
+┌─ Cover Art Providers ──────────────────────────────────────────────────┐
+│                                                                        │
+│  Discogs Personal Access Token   [password input]                     │
+│  ↳ Required for Discogs cover art. Get one at discogs.com/…           │
+│                                                                        │
+│  Spotify Client ID               [text input]                         │
+│  ↳ Required for Spotify cover art. Create an app at developer.…       │
+│                                                                        │
+│  Spotify Client Secret           [password input]                     │
+│  ↳ Write-only. Leave blank to keep the existing value                 │
+│                                                                        │
+│  Last.fm API Key                 [text input]                         │
+│  ↳ Optional fallback source. Get a key at last.fm/api/account/create  │
+│                                                                        │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+`inputTypes.PASSWORD` for tokens/secrets; `inputTypes.TEXT` for IDs and keys.
+The Spotify Client Secret field additionally shows a static info alert:
+_"Your secret is stored encrypted and is not shown after saving."_
+
+---
+
+### Phase 10.7 — Wire up Settings routing and navigation
+
+#### `src/App/AppRoutes.js`
+
+```jsx
+import CoverArtSettings from 'Settings/CoverArt/CoverArtSettings';
+// …
+<Route path="/settings/coverart" component={CoverArtSettings} />
+```
+
+Place the route alongside the other Settings routes.
+
+#### `src/Components/Page/Sidebar/PageSidebar.js`
+
+Add to the `Settings` children array (between Metadata and Tags):
+
+```js
+{
+  title: () => translate('CoverArt'),
+  to: '/settings/coverart'
+}
+```
+
+#### `src/Settings/Settings.js`
+
+Add a link + summary between the Metadata and Tags entries:
+
+```jsx
+<Link className={styles.link} to="/settings/coverart">
+  {translate('CoverArt')}
+</Link>
+<div className={styles.summary}>
+  {translate('CoverArtProvidersSettingsSummary')}
+</div>
+```
+
+---
+
+### Phase 10.8 — Wire up Album Details toolbar and modal
+
+#### `src/Album/Details/AlbumDetails.js`
+
+**State additions** (in constructor):
+
+```js
+isCoverArtSelectModalOpen: false
+```
+
+**Handler additions:**
+
+```js
+onCoverArtSelectPress = () => {
+  this.setState({ isCoverArtSelectModalOpen: true });
+};
+
+onCoverArtSelectModalClose = () => {
+  this.setState({ isCoverArtSelectModalOpen: false });
+};
+```
+
+**Toolbar button** (after the History button, before the separator before Edit):
+
+```jsx
+<PageToolbarButton
+  label={translate('SelectCoverArt')}
+  iconName={icons.COVER_ART}
+  onPress={this.onCoverArtSelectPress}
+/>
+```
+
+**Modal** (alongside the other modals at the bottom of `render()`):
+
+```jsx
+<SelectCoverArtModal
+  isOpen={isCoverArtSelectModalOpen}
+  albumId={id}
+  albumTitle={title}
+  onModalClose={this.onCoverArtSelectModalClose}
+/>
+```
+
+**Import additions:**
+
+```js
+import SelectCoverArtModal from 'Album/CoverArt/SelectCoverArtModal';
+```
+
+#### `src/Album/Details/AlbumDetailsConnector.js`
+
+```js
+import {
+  fetchCoverArtCandidates,
+  selectCoverArt,
+  resetCoverArt,
+  clearCoverArtCandidates
+} from 'Store/Actions/coverArtActions';
+
+// add to mapDispatchToProps:
+fetchCoverArtCandidates,
+selectCoverArt,
+resetCoverArt,
+clearCoverArtCandidates,
+```
+
+These are passed as props to `AlbumDetails` and forwarded from there to
+`SelectCoverArtModalConnector`.
+
+---
+
+### Frontend File Change Summary
+
+#### New files — 9
+
+| # | File | Purpose |
+|---|---|---|
+| 1 | `src/Store/Actions/coverArtActions.js` | Candidates fetch, select, reset, clear |
+| 2 | `src/Store/Actions/Settings/coverArtProviderSettings.js` | GET/PUT /config/coverartproviders |
+| 3 | `src/Album/CoverArt/SelectCoverArtModal.js` | Modal shell |
+| 4 | `src/Album/CoverArt/SelectCoverArtModalConnector.js` | Redux wiring |
+| 5 | `src/Album/CoverArt/SelectCoverArtModalContent.js` | Image grid + actions |
+| 6 | `src/Album/CoverArt/SelectCoverArtModalContent.css` | Grid layout styles |
+| 7 | `src/Settings/CoverArt/CoverArtSettings.js` | Settings page wrapper |
+| 8 | `src/Settings/CoverArt/CoverArtProviderSettings.js` | Form component |
+| 9 | `src/Settings/CoverArt/CoverArtProviderSettingsConnector.js` | Redux connector |
+
+#### Modified files — 8
+
+| # | File | Change |
+|---|---|---|
+| 10 | `src/Helpers/Props/icons.js` | Add `faImage` import + `COVER_ART` export |
+| 11 | `src/NzbDrone.Core/Localization/Core/en.json` | 17 new translation keys |
+| 12 | `src/Store/Actions/index.js` | Register `coverArt` module |
+| 13 | `src/Store/Actions/settingsActions.js` | Re-export `coverArtProviderSettings` |
+| 14 | `src/App/AppRoutes.js` | Add `/settings/coverart` route |
+| 15 | `src/Components/Page/Sidebar/PageSidebar.js` | Add nav entry |
+| 16 | `src/Settings/Settings.js` | Add Cover Art link card |
+| 17 | `src/Album/Details/AlbumDetails.js` | Toolbar button + modal + state/handlers |
+| 18 | `src/Album/Details/AlbumDetailsConnector.js` | Inject cover art dispatch actions |
+
+**Frontend total: 9 new files, 8 modified files.**
+
+---
+
+### Complete project file change summary
+
+| Layer | New files | Modified files | Total |
+|---|---|---|---|
+| Backend (Core + API) | 15 | 4 | 19 |
+| Frontend | 9 | 8 | 17 |
+| **Project total** | **24** | **12** | **36** |
