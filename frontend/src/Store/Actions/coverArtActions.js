@@ -1,6 +1,6 @@
 import { createAction } from 'redux-actions';
 import { batchActions } from 'redux-batched-actions';
-import { handleThunks } from 'Store/thunks';
+import { createThunk, handleThunks } from 'Store/thunks';
 import createAjaxRequest from 'Utilities/createAjaxRequest';
 import { set, updateItem } from './baseActions';
 import createHandleActions from './Creators/createHandleActions';
@@ -33,21 +33,9 @@ export const CLEAR_COVER_ART_CANDIDATES = 'coverArt/clearCoverArtCandidates';
 //
 // Action Creators
 
-export const fetchCoverArtCandidates = (payload) => ({
-  type: FETCH_COVER_ART_CANDIDATES,
-  payload
-});
-
-export const selectCoverArt = (payload) => ({
-  type: SELECT_COVER_ART,
-  payload
-});
-
-export const resetCoverArt = (payload) => ({
-  type: RESET_COVER_ART,
-  payload
-});
-
+export const fetchCoverArtCandidates = createThunk(FETCH_COVER_ART_CANDIDATES);
+export const selectCoverArt = createThunk(SELECT_COVER_ART);
+export const resetCoverArt = createThunk(RESET_COVER_ART);
 export const clearCoverArtCandidates = createAction(CLEAR_COVER_ART_CANDIDATES);
 
 //
