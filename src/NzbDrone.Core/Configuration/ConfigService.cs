@@ -312,6 +312,30 @@ namespace NzbDrone.Core.Configuration
             set { SetValue("EmbedCoverArt", value); }
         }
 
+        public string CoverArtDiscogsToken
+        {
+            get { return GetValue("CoverArtDiscogsToken", string.Empty); }
+            set { SetValue("CoverArtDiscogsToken", value); }
+        }
+
+        public string CoverArtSpotifyClientId
+        {
+            get { return GetValue("CoverArtSpotifyClientId", string.Empty); }
+            set { SetValue("CoverArtSpotifyClientId", value); }
+        }
+
+        public string CoverArtSpotifyClientSecret
+        {
+            get { return GetValue("CoverArtSpotifyClientSecret", string.Empty); }
+            set { SetValue("CoverArtSpotifyClientSecret", value); }
+        }
+
+        public string CoverArtLastFmApiKey
+        {
+            get { return GetValue("CoverArtLastFmApiKey", string.Empty); }
+            set { SetValue("CoverArtLastFmApiKey", value); }
+        }
+
         public int FirstDayOfWeek
         {
             get { return GetValueInt("FirstDayOfWeek", (int)CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek); }

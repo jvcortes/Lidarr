@@ -47,6 +47,13 @@ namespace NzbDrone.Core.Music
         public bool AnyReleaseOk { get; set; }
         public DateTime? LastInfoSync { get; set; }
         public DateTime Added { get; set; }
+
+        /// <summary>
+        /// URL of the cover image pinned by the user via the cover art selection screen.
+        /// NULL means use the SkyHook-supplied default. Stored as a URL string only;
+        /// the actual image bytes live on disk at {appData}/MediaCover/Albums/{Id}/cover.*
+        /// </summary>
+        public string UserSelectedCoverUrl { get; set; }
         [MemberwiseEqualityIgnore]
         public AddAlbumOptions AddOptions { get; set; }
 
@@ -99,6 +106,7 @@ namespace NzbDrone.Core.Music
             LastSearchTime = other.LastSearchTime;
             Added = other.Added;
             AddOptions = other.AddOptions;
+            UserSelectedCoverUrl = other.UserSelectedCoverUrl;
         }
 
         public override void ApplyChanges(Album other)

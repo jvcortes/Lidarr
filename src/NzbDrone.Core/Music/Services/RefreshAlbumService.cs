@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using NLog;
+using NzbDrone.Common.Extensions;
 using NzbDrone.Common.Instrumentation.Extensions;
 using NzbDrone.Core.Exceptions;
 using NzbDrone.Core.History;
@@ -174,9 +175,18 @@ namespace NzbDrone.Core.Music
                 result = UpdateResult.None;
             }
 
-            // Force update and fetch covers if images have changed so that we can write them into tags
-            if (remote.Images.Any() && !local.Images.SequenceEqual(remote.Images))
+            // If the user has pinned a cover URL, never let a metadata refresh overwrite it.
+            // Re-download the pinned URL so on-disk resize caches stay fresh.
+            if (local.UserSelectedCoverUrl.IsNotNullOrWhiteSpace())
             {
+                if (_mediaCoverService.EnsureAlbumCovers(local))
+                {
+                    result = UpdateResult.UpdateTags;
+                }
+            }
+            else if (remote.Images.Any() && !local.Images.SequenceEqual(remote.Images))
+            {
+                // Normal path: download updated cover from SkyHook metadata.
                 if (_mediaCoverService.EnsureAlbumCovers(remote))
                 {
                     result = UpdateResult.UpdateTags;

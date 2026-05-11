@@ -81,6 +81,12 @@ namespace NzbDrone.Core.Configuration
         bool ScrubAudioTags { get; set; }
         bool EmbedCoverArt { get; set; }
 
+        // Cover art provider credentials
+        string CoverArtDiscogsToken { get; set; }
+        string CoverArtSpotifyClientId { get; set; }
+        string CoverArtSpotifyClientSecret { get; set; }
+        string CoverArtLastFmApiKey { get; set; }
+
         // Forms Auth
         string RijndaelPassphrase { get; }
         string HmacPassphrase { get; }

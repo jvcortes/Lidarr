@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentValidation;
@@ -33,6 +34,8 @@ namespace Lidarr.Api.V1.Albums
         protected readonly IArtistService _artistService;
         protected readonly IReleaseService _releaseService;
         protected readonly IAddAlbumService _addAlbumService;
+        private readonly ICoverArtAggregatorService _coverArtAggregator;
+        private readonly IMapCoversToLocal _mediaCoverService;
 
         public AlbumController(IArtistService artistService,
                            IAlbumService albumService,
@@ -42,6 +45,7 @@ namespace Lidarr.Api.V1.Albums
                            IMapCoversToLocal coverMapper,
                            IUpgradableSpecification upgradableSpecification,
                            IBroadcastSignalRMessage signalRBroadcaster,
+                           ICoverArtAggregatorService coverArtAggregator,
                            RootFolderValidator rootFolderValidator,
                            MappedNetworkDriveValidator mappedNetworkDriveValidator,
                            ArtistAncestorValidator artistAncestorValidator,
@@ -57,6 +61,8 @@ namespace Lidarr.Api.V1.Albums
             _artistService = artistService;
             _releaseService = releaseService;
             _addAlbumService = addAlbumService;
+            _coverArtAggregator = coverArtAggregator;
+            _mediaCoverService = coverMapper;
 
             PostValidator.RuleFor(s => s.ForeignAlbumId).NotEmpty().SetValidator(albumExistsValidator);
             PostValidator.RuleFor(s => s.Artist).NotNull();
@@ -176,6 +182,99 @@ namespace Lidarr.Api.V1.Albums
             _albumService.SetMonitored(resource.AlbumIds, resource.Monitored);
 
             return Accepted(MapToResource(_albumService.GetAlbums(resource.AlbumIds), false));
+        }
+
+        // ── Cover art selection ──────────────────────────────────────────────
+
+        /// <summary>
+        /// Returns cover art candidates for the album, aggregated from all
+        /// configured providers (iTunes, MusicBrainz/CAA, Discogs, Spotify, Last.fm).
+        /// ThumbnailUrls are rewritten to the local proxy endpoint so the browser
+        /// can render them without CORS issues.
+        /// </summary>
+        [HttpGet("{id:int}/coverartcandidates")]
+        public ActionResult<List<CoverArtCandidateResource>> GetCoverArtCandidates(int id)
+        {
+            var album = _albumService.GetAlbum(id);
+            if (album == null)
+            {
+                return NotFound();
+            }
+
+            var candidates = _coverArtAggregator.GetCandidates(album);
+
+            var resources = candidates.Select((c, index) => new CoverArtCandidateResource
+            {
+                Id = index + 1,
+                Source = c.Source,
+                ImageUrl = c.ImageUrl,
+                ThumbnailUrl = BuildProxyUrl(c.ThumbnailUrl),
+                Width = c.Width,
+                Height = c.Height,
+                Types = c.Types,
+                ReleaseTitle = c.ReleaseTitle,
+                ReleaseUrl = c.ReleaseUrl
+            }).ToList();
+
+            return Ok(resources);
+        }
+
+        /// <summary>
+        /// Pins a user-chosen cover URL for this album.
+        /// The image is downloaded immediately; future metadata refreshes will not overwrite it.
+        /// </summary>
+        [HttpPut("{id:int}/coverart")]
+        public ActionResult<AlbumResource> SetCoverArt(int id, [FromBody] AlbumCoverArtResource resource)
+        {
+            if (resource?.CoverUrl.IsNullOrWhiteSpace() == true)
+            {
+                return BadRequest("CoverUrl is required.");
+            }
+
+            var album = _albumService.GetAlbum(id);
+            if (album == null)
+            {
+                return NotFound();
+            }
+
+            album.UserSelectedCoverUrl = resource.CoverUrl;
+            _albumService.UpdateAlbum(album);
+            _mediaCoverService.EnsureAlbumCovers(album);
+
+            BroadcastResourceChange(ModelAction.Updated, album.Id);
+
+            return Accepted(MapToResource(album, true));
+        }
+
+        /// <summary>
+        /// Clears the pinned cover URL, reverting to the SkyHook-supplied default.
+        /// </summary>
+        [HttpDelete("{id:int}/coverart")]
+        public ActionResult<AlbumResource> ClearCoverArt(int id)
+        {
+            var album = _albumService.GetAlbum(id);
+            if (album == null)
+            {
+                return NotFound();
+            }
+
+            album.UserSelectedCoverUrl = null;
+            _albumService.UpdateAlbum(album);
+            _mediaCoverService.EnsureAlbumCovers(album);
+
+            BroadcastResourceChange(ModelAction.Updated, album.Id);
+
+            return Accepted(MapToResource(album, true));
+        }
+
+        private string BuildProxyUrl(string remoteUrl)
+        {
+            if (remoteUrl.IsNullOrWhiteSpace())
+            {
+                return remoteUrl;
+            }
+
+            return $"/api/v1/MediaCover/proxy?url={Uri.EscapeDataString(remoteUrl)}";
         }
 
         [NonAction]

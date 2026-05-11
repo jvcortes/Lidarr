@@ -232,7 +232,22 @@ namespace NzbDrone.Core.MediaCover
         {
             var updated = false;
 
-            foreach (var cover in album.Images.Where(e => e.CoverType == MediaCoverTypes.Cover))
+            // If the user has pinned a cover, download that URL instead of the
+            // SkyHook-supplied one. The rest of the pipeline (resizing, serving
+            // via MediaCoverController) is identical for both paths.
+            var coverImages = album.Images
+                .Where(e => e.CoverType == MediaCoverTypes.Cover)
+                .AsEnumerable();
+
+            if (album.UserSelectedCoverUrl.IsNotNullOrWhiteSpace())
+            {
+                coverImages = new[]
+                {
+                    new MediaCover(MediaCoverTypes.Cover, album.UserSelectedCoverUrl)
+                };
+            }
+
+            foreach (var cover in coverImages)
             {
                 if (cover.CoverType == MediaCoverTypes.Unknown)
                 {
