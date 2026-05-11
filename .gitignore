@@ -168,3 +168,4 @@ node_modules.nosync
 # Ignore Jetbrains IntelliJ Workspace Directories
 .idea/
 .playwright-cli/
+_test_harness/
