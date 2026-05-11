@@ -121,6 +121,10 @@ const links = [
         to: '/settings/metadata'
       },
       {
+        title: () => translate('CoverArt'),
+        to: '/settings/coverart'
+      },
+      {
         title: () => translate('Tags'),
         to: '/settings/tags'
       },

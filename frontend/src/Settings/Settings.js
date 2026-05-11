@@ -115,6 +115,17 @@ function Settings() {
 
         <Link
           className={styles.link}
+          to="/settings/coverart"
+        >
+          {translate('CoverArt')}
+        </Link>
+
+        <div className={styles.summary}>
+          {translate('CoverArtProvidersSettingsSummary')}
+        </div>
+
+        <Link
+          className={styles.link}
           to="/settings/tags"
         >
           {translate('Tags')}

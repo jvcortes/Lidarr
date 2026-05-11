@@ -11,6 +11,7 @@ import CalendarPageConnector from 'Calendar/CalendarPageConnector';
 import NotFound from 'Components/NotFound';
 import Switch from 'Components/Router/Switch';
 import AddNewItemConnector from 'Search/AddNewItemConnector';
+import CoverArtSettings from 'Settings/CoverArt/CoverArtSettings';
 import CustomFormatSettingsPage from 'Settings/CustomFormats/CustomFormatSettingsPage';
 import DownloadClientSettingsConnector from 'Settings/DownloadClients/DownloadClientSettingsConnector';
 import GeneralSettingsConnector from 'Settings/General/GeneralSettingsConnector';
@@ -211,6 +212,11 @@ function AppRoutes(props) {
       <Route
         path="/settings/metadata"
         component={MetadataSettings}
+      />
+
+      <Route
+        path="/settings/coverart"
+        component={CoverArtSettings}
       />
 
       <Route

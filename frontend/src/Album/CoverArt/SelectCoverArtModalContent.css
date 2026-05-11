@@ -1,0 +1,59 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  padding: 4px;
+}
+
+.card {
+  position: relative;
+  border-radius: 4px;
+  overflow: hidden;
+  background-color: var(--cardBackgroundColor);
+  box-shadow: 0 0 6px 1px var(--cardShadowColor);
+}
+
+.sourceBadge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 1;
+}
+
+.thumbnail {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  display: block;
+}
+
+.info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+}
+
+.resolution {
+  font-size: 11px;
+  color: var(--textSecondaryColor);
+}
+
+.selectButton {
+  flex-shrink: 0;
+}
+
+.releaseLink {
+  display: block;
+  padding: 0 8px 6px;
+  font-size: 11px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--linkColor);
+  text-decoration: none;
+}
+
+.releaseLink:hover {
+  text-decoration: underline;
+}

@@ -9,6 +9,7 @@ import * as blocklist from './blocklistActions';
 import * as calendar from './calendarActions';
 import * as captcha from './captchaActions';
 import * as commands from './commandActions';
+import * as coverArt from './coverArtActions';
 import * as customFilters from './customFilterActions';
 import * as history from './historyActions';
 import * as interactiveImportActions from './interactiveImportActions';
@@ -31,6 +32,7 @@ import * as wanted from './wantedActions';
 export default [
   app,
   albums,
+  coverArt,
   albumHistory,
   albumSelection,
   artist,

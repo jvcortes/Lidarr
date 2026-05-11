@@ -67,6 +67,7 @@ import {
   faHeart as fasHeart,
   faHistory as fasHistory,
   faHome as fasHome,
+  faImage as fasImage,
   faInfoCircle as fasInfoCircle,
   faLanguage as fasLanguage,
   faLaptop as fasLaptop,
@@ -143,6 +144,7 @@ export const CLOSE = fasTimes;
 export const CLONE = farClone;
 export const COLLAPSE = fasChevronCircleUp;
 export const COMPUTER = fasDesktop;
+export const COVER_ART = fasImage;
 export const DANGER = fasExclamationCircle;
 export const DELETE = fasTrashAlt;
 export const DOWNLOAD = fasDownload;

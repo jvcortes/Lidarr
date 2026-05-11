@@ -3,6 +3,7 @@ import { handleThunks } from 'Store/thunks';
 import createHandleActions from './Creators/createHandleActions';
 import autoTaggings from './Settings/autoTaggings';
 import autoTaggingSpecifications from './Settings/autoTaggingSpecifications';
+import coverArtProviderSettings from './Settings/coverArtProviderSettings';
 import customFormats from './Settings/customFormats';
 import customFormatSpecifications from './Settings/customFormatSpecifications';
 import delayProfiles from './Settings/delayProfiles';
@@ -46,6 +47,7 @@ export * from './Settings/languages';
 export * from './Settings/metadataProfiles';
 export * from './Settings/mediaManagement';
 export * from './Settings/metadata';
+export * from './Settings/coverArtProviderSettings';
 export * from './Settings/metadataProvider';
 export * from './Settings/naming';
 export * from './Settings/namingExamples';
@@ -84,6 +86,7 @@ export const defaultState = {
   metadataProfiles: metadataProfiles.defaultState,
   mediaManagement: mediaManagement.defaultState,
   metadata: metadata.defaultState,
+  coverArtProviders: coverArtProviderSettings.defaultState,
   metadataProvider: metadataProvider.defaultState,
   naming: naming.defaultState,
   namingExamples: namingExamples.defaultState,
@@ -131,6 +134,7 @@ export const actionHandlers = handleThunks({
   ...metadataProfiles.actionHandlers,
   ...mediaManagement.actionHandlers,
   ...metadata.actionHandlers,
+  ...coverArtProviderSettings.actionHandlers,
   ...metadataProvider.actionHandlers,
   ...naming.actionHandlers,
   ...namingExamples.actionHandlers,
@@ -169,6 +173,7 @@ export const reducers = createHandleActions({
   ...metadataProfiles.reducers,
   ...mediaManagement.reducers,
   ...metadata.reducers,
+  ...coverArtProviderSettings.reducers,
   ...metadataProvider.reducers,
   ...naming.reducers,
   ...namingExamples.reducers,

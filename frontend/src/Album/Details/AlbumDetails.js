@@ -4,6 +4,7 @@ import PropTypes from 'prop-types';
 import React, { Component } from 'react';
 import TextTruncate from 'react-text-truncate';
 import AlbumCover from 'Album/AlbumCover';
+import SelectCoverArtModal from 'Album/CoverArt/SelectCoverArtModal';
 import DeleteAlbumModal from 'Album/Delete/DeleteAlbumModal';
 import EditAlbumModalConnector from 'Album/Edit/EditAlbumModalConnector';
 import AlbumInteractiveSearchModalConnector from 'Album/Search/AlbumInteractiveSearchModalConnector';
@@ -82,6 +83,7 @@ class AlbumDetails extends Component {
       isRetagModalOpen: false,
       isArtistHistoryModalOpen: false,
       isInteractiveSearchModalOpen: false,
+      isCoverArtSelectModalOpen: false,
       isManageTracksOpen: false,
       isEditAlbumModalOpen: false,
       isDeleteAlbumModalOpen: false,
@@ -143,6 +145,14 @@ class AlbumDetails extends Component {
 
   onInteractiveSearchModalClose = () => {
     this.setState({ isInteractiveSearchModalOpen: false });
+  };
+
+  onCoverArtSelectPress = () => {
+    this.setState({ isCoverArtSelectModalOpen: true });
+  };
+
+  onCoverArtSelectModalClose = () => {
+    this.setState({ isCoverArtSelectModalOpen: false });
   };
 
   onArtistHistoryPress = () => {
@@ -226,6 +236,7 @@ class AlbumDetails extends Component {
       isEditAlbumModalOpen,
       isDeleteAlbumModalOpen,
       isManageTracksOpen,
+      isCoverArtSelectModalOpen,
       allExpanded,
       allCollapsed,
       expandedState
@@ -292,6 +303,12 @@ class AlbumDetails extends Component {
               label={translate('History')}
               iconName={icons.HISTORY}
               onPress={this.onArtistHistoryPress}
+            />
+
+            <PageToolbarButton
+              label={translate('SelectCoverArt')}
+              iconName={icons.COVER_ART}
+              onPress={this.onCoverArtSelectPress}
             />
 
             <PageToolbarSeparator />
@@ -656,6 +673,13 @@ class AlbumDetails extends Component {
             albumId={id}
             foreignArtistId={artist.foreignArtistId}
             onModalClose={this.onDeleteAlbumModalClose}
+          />
+
+          <SelectCoverArtModal
+            isOpen={isCoverArtSelectModalOpen}
+            albumId={id}
+            albumTitle={title}
+            onModalClose={this.onCoverArtSelectModalClose}
           />
 
         </PageContentBody>
