@@ -23,10 +23,6 @@ const sourceKindMap = {
   LastFm: kinds.DEFAULT
 };
 
-function buildProxyUrl(url) {
-  return `${window.Lidarr.urlBase}/api/v1/MediaCover/proxy?url=${encodeURIComponent(url)}`;
-}
-
 function SelectCoverArtModalContent(props) {
   const {
     albumTitle,
@@ -86,7 +82,7 @@ function SelectCoverArtModalContent(props) {
 
                       <img
                         className={styles.thumbnail}
-                        src={buildProxyUrl(candidate.thumbnailUrl)}
+                        src={`${window.Lidarr.urlBase}${candidate.thumbnailUrl}`}
                         alt={candidate.releaseTitle ?? albumTitle}
                       />
 
