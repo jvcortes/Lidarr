@@ -82,7 +82,7 @@ function SelectCoverArtModalContent(props) {
 
                       <img
                         className={styles.thumbnail}
-                        src={`${window.Lidarr.urlBase}${candidate.thumbnailUrl}`}
+                        src={`${window.Lidarr.urlBase}${candidate.thumbnailUrl}&apikey=${window.Lidarr.apiKey}`}
                         alt={candidate.releaseTitle ?? albumTitle}
                       />
 

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
 using Lidarr.Http;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.StaticFiles;
 using NzbDrone.Common.Disk;
@@ -100,6 +101,7 @@ namespace Lidarr.Api.V1.MediaCovers
         /// can load it without CORS issues during the selection screen.
         /// Only URLs whose host appears in AllowedProxyHosts are accepted.
         /// </summary>
+        [AllowAnonymous]
         [HttpGet("proxy")]
         public IActionResult ProxyCoverArt([FromQuery] string url)
         {
