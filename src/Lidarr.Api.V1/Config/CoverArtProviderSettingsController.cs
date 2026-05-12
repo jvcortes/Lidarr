@@ -33,6 +33,12 @@ namespace Lidarr.Api.V1.Config
 
             _configService.CoverArtLastFmApiKey = resource.LastFmApiKey ?? string.Empty;
 
+            _configService.EnableCoverArtMusicBrainz = resource.EnableMusicBrainz;
+            _configService.EnableCoverArtItunes = resource.EnableItunes;
+            _configService.EnableCoverArtDiscogs = resource.EnableDiscogs;
+            _configService.EnableCoverArtSpotify = resource.EnableSpotify;
+            _configService.EnableCoverArtLastFm = resource.EnableLastFm;
+
             return Accepted(resource.Id);
         }
     }

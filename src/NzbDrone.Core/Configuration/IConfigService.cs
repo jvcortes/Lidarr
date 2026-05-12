@@ -87,6 +87,13 @@ namespace NzbDrone.Core.Configuration
         string CoverArtSpotifyClientSecret { get; set; }
         string CoverArtLastFmApiKey { get; set; }
 
+        // Cover art provider toggles
+        bool EnableCoverArtMusicBrainz { get; set; }
+        bool EnableCoverArtItunes { get; set; }
+        bool EnableCoverArtDiscogs { get; set; }
+        bool EnableCoverArtSpotify { get; set; }
+        bool EnableCoverArtLastFm { get; set; }
+
         // Forms Auth
         string RijndaelPassphrase { get; }
         string HmacPassphrase { get; }

@@ -14,6 +14,12 @@ namespace Lidarr.Api.V1.Config
         /// </summary>
         public string SpotifyClientSecret { get; set; }
         public string LastFmApiKey { get; set; }
+
+        public bool EnableMusicBrainz { get; set; }
+        public bool EnableItunes { get; set; }
+        public bool EnableDiscogs { get; set; }
+        public bool EnableSpotify { get; set; }
+        public bool EnableLastFm { get; set; }
     }
 
     public static class CoverArtProviderSettingsResourceMapper
@@ -29,7 +35,12 @@ namespace Lidarr.Api.V1.Config
                 SpotifyClientSecret = string.IsNullOrWhiteSpace(model.CoverArtSpotifyClientSecret)
                     ? string.Empty
                     : "****",
-                LastFmApiKey = model.CoverArtLastFmApiKey
+                LastFmApiKey = model.CoverArtLastFmApiKey,
+                EnableMusicBrainz = model.EnableCoverArtMusicBrainz,
+                EnableItunes = model.EnableCoverArtItunes,
+                EnableDiscogs = model.EnableCoverArtDiscogs,
+                EnableSpotify = model.EnableCoverArtSpotify,
+                EnableLastFm = model.EnableCoverArtLastFm
             };
         }
     }

@@ -40,6 +40,71 @@ function CoverArtProviderSettings(props) {
 
               <FormGroup>
                 <FormLabel>
+                  {translate('EnableMusicBrainz')}
+                </FormLabel>
+
+                <FormInputGroup
+                  type={inputTypes.CHECK}
+                  name="enableMusicBrainz"
+                  onChange={onInputChange}
+                  {...settings.enableMusicBrainz}
+                />
+              </FormGroup>
+
+              <FormGroup>
+                <FormLabel>
+                  {translate('EnableItunes')}
+                </FormLabel>
+
+                <FormInputGroup
+                  type={inputTypes.CHECK}
+                  name="enableItunes"
+                  onChange={onInputChange}
+                  {...settings.enableItunes}
+                />
+              </FormGroup>
+
+              <FormGroup>
+                <FormLabel>
+                  {translate('EnableDiscogs')}
+                </FormLabel>
+
+                <FormInputGroup
+                  type={inputTypes.CHECK}
+                  name="enableDiscogs"
+                  onChange={onInputChange}
+                  {...settings.enableDiscogs}
+                />
+              </FormGroup>
+
+              <FormGroup>
+                <FormLabel>
+                  {translate('EnableSpotify')}
+                </FormLabel>
+
+                <FormInputGroup
+                  type={inputTypes.CHECK}
+                  name="enableSpotify"
+                  onChange={onInputChange}
+                  {...settings.enableSpotify}
+                />
+              </FormGroup>
+
+              <FormGroup>
+                <FormLabel>
+                  {translate('EnableLastFm')}
+                </FormLabel>
+
+                <FormInputGroup
+                  type={inputTypes.CHECK}
+                  name="enableLastFm"
+                  onChange={onInputChange}
+                  {...settings.enableLastFm}
+                />
+              </FormGroup>
+
+              <FormGroup>
+                <FormLabel>
                   {translate('CoverArtDiscogsToken')}
                 </FormLabel>
 

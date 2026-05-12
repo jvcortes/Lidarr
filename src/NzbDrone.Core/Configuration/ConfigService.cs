@@ -336,6 +336,36 @@ namespace NzbDrone.Core.Configuration
             set { SetValue("CoverArtLastFmApiKey", value); }
         }
 
+        public bool EnableCoverArtMusicBrainz
+        {
+            get { return GetValueBoolean("EnableCoverArtMusicBrainz", false); }
+            set { SetValue("EnableCoverArtMusicBrainz", value); }
+        }
+
+        public bool EnableCoverArtItunes
+        {
+            get { return GetValueBoolean("EnableCoverArtItunes", true); }
+            set { SetValue("EnableCoverArtItunes", value); }
+        }
+
+        public bool EnableCoverArtDiscogs
+        {
+            get { return GetValueBoolean("EnableCoverArtDiscogs", false); }
+            set { SetValue("EnableCoverArtDiscogs", value); }
+        }
+
+        public bool EnableCoverArtSpotify
+        {
+            get { return GetValueBoolean("EnableCoverArtSpotify", false); }
+            set { SetValue("EnableCoverArtSpotify", value); }
+        }
+
+        public bool EnableCoverArtLastFm
+        {
+            get { return GetValueBoolean("EnableCoverArtLastFm", true); }
+            set { SetValue("EnableCoverArtLastFm", value); }
+        }
+
         public int FirstDayOfWeek
         {
             get { return GetValueInt("FirstDayOfWeek", (int)CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek); }
