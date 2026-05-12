@@ -10,6 +10,7 @@ using NzbDrone.Common.EnvironmentInfo;
 using NzbDrone.Common.Extensions;
 using NzbDrone.Common.Http;
 using NzbDrone.Core.Configuration;
+using NzbDrone.Core.MediaFiles;
 using NzbDrone.Core.Messaging.Events;
 using NzbDrone.Core.Music;
 using NzbDrone.Core.Music.Events;
@@ -21,6 +22,7 @@ namespace NzbDrone.Core.MediaCover
         void ConvertToLocalUrls(int entityId, MediaCoverEntity coverEntity, ICollection<MediaCover> covers);
         string GetCoverPath(int entityId, MediaCoverEntity coverEntity, MediaCoverTypes coverType, string extension, int? height = null);
         bool EnsureAlbumCovers(Album album);
+        void WriteCoverToAlbumFolders(Album album, IEnumerable<TrackFile> trackFiles);
     }
 
     public class MediaCoverService :
@@ -126,6 +128,37 @@ namespace NzbDrone.Core.MediaCover
                     var lastWrite = _diskProvider.FileGetLastWrite(filePath);
                     mediaCover.Url += "?lastWrite=" + lastWrite.Ticks;
                 }
+                else if (mediaCover.CoverType == MediaCoverTypes.Cover)
+                {
+                    // The expected extension (from SkyHook metadata) doesn't match the file on
+                    // disk — e.g. a user-selected cover was saved with a different extension.
+                    // Scan the cache directory for any cover.* file and redirect the URL to it.
+                    var cacheDir = coverEntity == MediaCoverEntity.Album
+                        ? GetAlbumCoverPath(entityId)
+                        : GetArtistCoverPath(entityId);
+
+                    if (_diskProvider.FolderExists(cacheDir))
+                    {
+                        var actual = _diskProvider.GetFileInfos(cacheDir)
+                            .FirstOrDefault(fi => Path.GetFileNameWithoutExtension(fi.Name)
+                                .Equals("cover", StringComparison.OrdinalIgnoreCase));
+
+                        if (actual != null)
+                        {
+                            var actualExt = actual.Extension; // e.g. ".jpeg"
+                            if (coverEntity == MediaCoverEntity.Album)
+                            {
+                                mediaCover.Url = _configFileProvider.UrlBase + "/MediaCover/Albums/" + entityId + "/cover" + actualExt;
+                            }
+                            else
+                            {
+                                mediaCover.Url = _configFileProvider.UrlBase + "/MediaCover/" + entityId + "/cover" + actualExt;
+                            }
+
+                            mediaCover.Url += "?lastWrite=" + _diskProvider.FileGetLastWrite(actual.FullName).Ticks;
+                        }
+                    }
+                }
             }
         }
 
@@ -152,31 +185,41 @@ namespace NzbDrone.Core.MediaCover
                 }
 
                 var fileName = GetCoverPath(artist.Id, MediaCoverEntity.Artist, cover.CoverType, cover.Extension);
+                DateTime? lastModified = null;
                 var alreadyExists = false;
 
                 try
                 {
                     var serverFileHeaders = _httpClient.Head(new HttpRequest(cover.Url) { AllowAutoRedirect = true }).Headers;
+                    lastModified = serverFileHeaders.LastModified;
 
-                    alreadyExists = _coverExistsSpecification.AlreadyExists(serverFileHeaders.LastModified, serverFileHeaders.ContentLength, fileName);
+                    alreadyExists = _coverExistsSpecification.AlreadyExists(lastModified, serverFileHeaders.ContentLength, fileName);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Debug(ex, "HEAD request failed for {0}, will attempt download regardless", cover.Url);
+                    alreadyExists = false;
+                }
 
-                    if (!alreadyExists)
+                if (!alreadyExists)
+                {
+                    try
                     {
-                        DownloadCover(artist, cover, serverFileHeaders.LastModified ?? DateTime.Now);
+                        DownloadCover(artist, cover, lastModified ?? DateTime.Now);
                         updated = true;
                     }
-                }
-                catch (HttpException e)
-                {
-                    _logger.Warn("Couldn't download media cover for {0}. {1}", artist, e.Message);
-                }
-                catch (WebException e)
-                {
-                    _logger.Warn("Couldn't download media cover for {0}. {1}", artist, e.Message);
-                }
-                catch (Exception e)
-                {
-                    _logger.Error(e, "Couldn't download media cover for {0}", artist);
+                    catch (HttpException e)
+                    {
+                        _logger.Warn("Couldn't download media cover for {0}. {1}", artist, e.Message);
+                    }
+                    catch (WebException e)
+                    {
+                        _logger.Warn("Couldn't download media cover for {0}. {1}", artist, e.Message);
+                    }
+                    catch (Exception e)
+                    {
+                        _logger.Error(e, "Couldn't download media cover for {0}", artist);
+                    }
                 }
 
                 toResize.Add(Tuple.Create(cover, alreadyExists));
@@ -232,9 +275,6 @@ namespace NzbDrone.Core.MediaCover
         {
             var updated = false;
 
-            // If the user has pinned a cover, download that URL instead of the
-            // SkyHook-supplied one. The rest of the pipeline (resizing, serving
-            // via MediaCoverController) is identical for both paths.
             var coverImages = album.Images
                 .Where(e => e.CoverType == MediaCoverTypes.Cover)
                 .AsEnumerable();
@@ -245,6 +285,24 @@ namespace NzbDrone.Core.MediaCover
                 {
                     new MediaCover(MediaCoverTypes.Cover, album.UserSelectedCoverUrl)
                 };
+
+                // Remove any existing cover files with a different extension so that
+                // ConvertToLocalUrls doesn't serve a stale file from a previous source.
+                var albumCacheDir = GetAlbumCoverPath(album.Id);
+                var newExt = GetExtension(MediaCoverTypes.Cover, Path.GetExtension(album.UserSelectedCoverUrl));
+                if (_diskProvider.FolderExists(albumCacheDir))
+                {
+                    foreach (var fi in _diskProvider.GetFileInfos(albumCacheDir))
+                    {
+                        var baseName = Path.GetFileNameWithoutExtension(fi.Name);
+                        if (baseName.Equals("cover", StringComparison.OrdinalIgnoreCase) &&
+                            !fi.Extension.Equals(newExt, StringComparison.OrdinalIgnoreCase))
+                        {
+                            _logger.Debug("Removing stale cover file {0}", fi.FullName);
+                            _diskProvider.DeleteFile(fi.FullName);
+                        }
+                    }
+                }
             }
 
             foreach (var cover in coverImages)
@@ -255,31 +313,41 @@ namespace NzbDrone.Core.MediaCover
                 }
 
                 var fileName = GetCoverPath(album.Id, MediaCoverEntity.Album, cover.CoverType, cover.Extension, null);
+                DateTime? lastModified = null;
                 var alreadyExists = false;
 
                 try
                 {
                     var serverFileHeaders = _httpClient.Head(new HttpRequest(cover.Url) { AllowAutoRedirect = true }).Headers;
+                    lastModified = serverFileHeaders.LastModified;
 
-                    alreadyExists = _coverExistsSpecification.AlreadyExists(serverFileHeaders.LastModified, serverFileHeaders.ContentLength, fileName);
+                    alreadyExists = _coverExistsSpecification.AlreadyExists(lastModified, serverFileHeaders.ContentLength, fileName);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Debug(ex, "HEAD request failed for {0}, will attempt download regardless", cover.Url);
+                    alreadyExists = false;
+                }
 
-                    if (!alreadyExists)
+                if (!alreadyExists)
+                {
+                    try
                     {
-                        DownloadAlbumCover(album, cover, serverFileHeaders.LastModified ?? DateTime.Now);
+                        DownloadAlbumCover(album, cover, lastModified ?? DateTime.Now);
                         updated = true;
                     }
-                }
-                catch (HttpException e)
-                {
-                    _logger.Warn("Couldn't download media cover for {0}. {1}", album, e.Message);
-                }
-                catch (WebException e)
-                {
-                    _logger.Warn("Couldn't download media cover for {0}. {1}", album, e.Message);
-                }
-                catch (Exception e)
-                {
-                    _logger.Error(e, "Couldn't download media cover for {0}", album);
+                    catch (HttpException e)
+                    {
+                        _logger.Warn("Couldn't download media cover for {0}. {1}", album, e.Message);
+                    }
+                    catch (WebException e)
+                    {
+                        _logger.Warn("Couldn't download media cover for {0}. {1}", album, e.Message);
+                    }
+                    catch (Exception e)
+                    {
+                        _logger.Error(e, "Couldn't download media cover for {0}", album);
+                    }
                 }
             }
 
@@ -368,13 +436,91 @@ namespace NzbDrone.Core.MediaCover
             }
         }
 
-        private string GetExtension(MediaCoverTypes coverType, string defaultExtension)
+        private static string GetExtension(MediaCoverTypes coverType, string defaultExtension)
         {
             return coverType switch
             {
                 MediaCoverTypes.Clearlogo => ".png",
-                _ => defaultExtension
+                _ => defaultExtension.IsNotNullOrWhiteSpace()
+                    ? defaultExtension
+                    : ".jpg"
             };
+        }
+
+        public void WriteCoverToAlbumFolders(Album album, IEnumerable<TrackFile> trackFiles)
+        {
+            // Determine the extension used when the cover was cached
+            var url = album.UserSelectedCoverUrl;
+            if (url.IsNullOrWhiteSpace())
+            {
+                var img = album.Images.FirstOrDefault(x => x.CoverType == MediaCoverTypes.Cover);
+                if (img == null)
+                {
+                    _logger.Debug("No cover image found for {0}, skipping folder copy", album);
+                    return;
+                }
+
+                url = img.Url;
+            }
+
+            var ext = Path.GetExtension(url);
+            if (ext.IsNullOrWhiteSpace())
+            {
+                ext = ".jpg";
+            }
+
+            var coverCachePath = GetCoverPath(album.Id, MediaCoverEntity.Album, MediaCoverTypes.Cover, ext, null);
+            if (!_diskProvider.FileExists(coverCachePath))
+            {
+                _logger.Debug("Cached cover not found at {0}, skipping folder copy", coverCachePath);
+                return;
+            }
+
+            var albumFolders = trackFiles
+                .Select(f => Path.GetDirectoryName(f.Path))
+                .Distinct()
+                .Where(d => d.IsNotNullOrWhiteSpace() && _diskProvider.FolderExists(d))
+                .ToList();
+
+            if (!albumFolders.Any())
+            {
+                _logger.Debug("No album folders found for {0}, skipping folder copy", album);
+                return;
+            }
+
+            foreach (var folder in albumFolders)
+            {
+                var destPath = Path.Combine(folder, "cover" + ext);
+
+                // Remove any stale cover files with a different extension so the folder
+                // never ends up with both cover.jpg and cover.jpeg at the same time.
+                try
+                {
+                    foreach (var fi in _diskProvider.GetFileInfos(folder))
+                    {
+                        if (Path.GetFileNameWithoutExtension(fi.Name).Equals("cover", StringComparison.OrdinalIgnoreCase) &&
+                            !fi.Extension.Equals(ext, StringComparison.OrdinalIgnoreCase))
+                        {
+                            _logger.Debug("Removing stale cover file from album folder: {0}", fi.FullName);
+                            _diskProvider.DeleteFile(fi.FullName);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warn(ex, "Failed to clean up stale cover files in {0}", folder);
+                }
+
+                _logger.Info("Writing cover to album folder: {0}", destPath);
+                try
+                {
+                    _diskProvider.CopyFile(coverCachePath, destPath, overwrite: true);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warn(ex, "Failed to write cover to {0}", destPath);
+                }
+            }
         }
 
         public void HandleAsync(ArtistRefreshCompleteEvent message)

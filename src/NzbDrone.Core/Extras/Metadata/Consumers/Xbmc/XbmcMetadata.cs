@@ -226,14 +226,13 @@ namespace NzbDrone.Core.Extras.Metadata.Consumers.Xbmc
         {
             foreach (var image in album.Images)
             {
-                // TODO: Make Source fallback to URL if local does not exist
-                // var source = _mediaCoverService.GetCoverPath(album.ArtistId, image.CoverType, null, album.Id);
+                var source = _mediaCoverService.GetCoverPath(album.Id, MediaCoverEntity.Album, image.CoverType, image.Extension, null);
                 string filename;
 
                 switch (image.CoverType)
                 {
                     case MediaCoverTypes.Cover:
-                        filename = "folder";
+                        filename = "cover";
                         break;
                     case MediaCoverTypes.Disc:
                         filename = "discart";
@@ -244,7 +243,7 @@ namespace NzbDrone.Core.Extras.Metadata.Consumers.Xbmc
 
                 var destination = Path.Combine(albumPath, filename + image.Extension);
 
-                yield return new ImageFileResult(destination, image.Url);
+                yield return new ImageFileResult(destination, source);
             }
         }
 

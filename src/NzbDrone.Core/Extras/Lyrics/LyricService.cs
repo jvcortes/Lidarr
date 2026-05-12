@@ -38,6 +38,11 @@ namespace NzbDrone.Core.Extras.Lyrics
             return Enumerable.Empty<ExtraFile>();
         }
 
+        public override IEnumerable<ExtraFile> CreateAfterAlbumCoverUpdate(Artist artist, Album album)
+        {
+            return Enumerable.Empty<LyricFile>();
+        }
+
         public override IEnumerable<ExtraFile> CreateAfterArtistScan(Artist artist, List<TrackFile> trackFiles)
         {
             return Enumerable.Empty<LyricFile>();

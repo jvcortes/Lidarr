@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentValidation;
@@ -12,7 +11,9 @@ using NzbDrone.Core.DecisionEngine.Specifications;
 using NzbDrone.Core.Download;
 using NzbDrone.Core.MediaCover;
 using NzbDrone.Core.MediaFiles;
+using NzbDrone.Core.MediaFiles.Commands;
 using NzbDrone.Core.MediaFiles.Events;
+using NzbDrone.Core.Messaging.Commands;
 using NzbDrone.Core.Messaging.Events;
 using NzbDrone.Core.Music;
 using NzbDrone.Core.Music.Events;
@@ -36,6 +37,8 @@ namespace Lidarr.Api.V1.Albums
         protected readonly IAddAlbumService _addAlbumService;
         private readonly ICoverArtAggregatorService _coverArtAggregator;
         private readonly IMapCoversToLocal _mediaCoverService;
+        private readonly IManageCommandQueue _commandQueueManager;
+        private readonly IMediaFileService _mediaFileService;
 
         public AlbumController(IArtistService artistService,
                            IAlbumService albumService,
@@ -46,6 +49,8 @@ namespace Lidarr.Api.V1.Albums
                            IUpgradableSpecification upgradableSpecification,
                            IBroadcastSignalRMessage signalRBroadcaster,
                            ICoverArtAggregatorService coverArtAggregator,
+                           IManageCommandQueue commandQueueManager,
+                           IMediaFileService mediaFileService,
                            RootFolderValidator rootFolderValidator,
                            MappedNetworkDriveValidator mappedNetworkDriveValidator,
                            ArtistAncestorValidator artistAncestorValidator,
@@ -63,6 +68,8 @@ namespace Lidarr.Api.V1.Albums
             _addAlbumService = addAlbumService;
             _coverArtAggregator = coverArtAggregator;
             _mediaCoverService = coverMapper;
+            _commandQueueManager = commandQueueManager;
+            _mediaFileService = mediaFileService;
 
             PostValidator.RuleFor(s => s.ForeignAlbumId).NotEmpty().SetValidator(albumExistsValidator);
             PostValidator.RuleFor(s => s.Artist).NotNull();
@@ -189,8 +196,8 @@ namespace Lidarr.Api.V1.Albums
         /// <summary>
         /// Returns cover art candidates for the album, aggregated from all
         /// configured providers (iTunes, MusicBrainz/CAA, Discogs, Spotify, Last.fm).
-        /// ThumbnailUrls are rewritten to the local proxy endpoint so the browser
-        /// can render them without CORS issues.
+        /// ThumbnailUrls are returned as direct remote CDN URLs so the browser
+        /// can load them without proxying through Lidarr.
         /// </summary>
         [HttpGet("{id:int}/coverartcandidates")]
         public ActionResult<List<CoverArtCandidateResource>> GetCoverArtCandidates(int id)
@@ -208,7 +215,7 @@ namespace Lidarr.Api.V1.Albums
                 Id = index + 1,
                 Source = c.Source,
                 ImageUrl = c.ImageUrl,
-                ThumbnailUrl = BuildProxyUrl(c.ThumbnailUrl),
+                ThumbnailUrl = c.ThumbnailUrl,
                 Width = c.Width,
                 Height = c.Height,
                 Types = c.Types,
@@ -239,7 +246,19 @@ namespace Lidarr.Api.V1.Albums
 
             album.UserSelectedCoverUrl = resource.CoverUrl;
             _albumService.UpdateAlbum(album);
+
             _mediaCoverService.EnsureAlbumCovers(album);
+
+            // Write cover directly to the album folder(s) on disk
+            var trackFiles = _mediaFileService.GetFilesByAlbum(album.Id);
+            _mediaCoverService.WriteCoverToAlbumFolders(album, trackFiles);
+
+            // Schedule retagging of album track files so cover art gets embedded in tags
+            if (trackFiles.Any())
+            {
+                var artist = _artistService.GetArtistByMetadataId(album.ArtistMetadataId);
+                _commandQueueManager.Push(new RetagFilesCommand(artist.Id, trackFiles.Select(f => f.Id).ToList()));
+            }
 
             BroadcastResourceChange(ModelAction.Updated, album.Id);
 
@@ -260,21 +279,23 @@ namespace Lidarr.Api.V1.Albums
 
             album.UserSelectedCoverUrl = null;
             _albumService.UpdateAlbum(album);
+
             _mediaCoverService.EnsureAlbumCovers(album);
+
+            // Write cover directly to the album folder(s) on disk
+            var trackFiles = _mediaFileService.GetFilesByAlbum(album.Id);
+            _mediaCoverService.WriteCoverToAlbumFolders(album, trackFiles);
+
+            // Schedule retagging to pick up the reverted cover
+            if (trackFiles.Any())
+            {
+                var artist = _artistService.GetArtistByMetadataId(album.ArtistMetadataId);
+                _commandQueueManager.Push(new RetagFilesCommand(artist.Id, trackFiles.Select(f => f.Id).ToList()));
+            }
 
             BroadcastResourceChange(ModelAction.Updated, album.Id);
 
             return Accepted(MapToResource(album, true));
-        }
-
-        private string BuildProxyUrl(string remoteUrl)
-        {
-            if (remoteUrl.IsNullOrWhiteSpace())
-            {
-                return remoteUrl;
-            }
-
-            return $"/api/v1/MediaCover/proxy?url={Uri.EscapeDataString(remoteUrl)}";
         }
 
         [NonAction]

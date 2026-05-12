@@ -28,6 +28,7 @@ namespace NzbDrone.Core.Extras.Metadata
         private readonly IMediaFileAttributeService _mediaFileAttributeService;
         private readonly IMetadataFileService _metadataFileService;
         private readonly IAlbumService _albumService;
+        private readonly IMediaFileService _mediaFileService;
         private readonly Logger _logger;
 
         public MetadataService(IConfigService configService,
@@ -41,6 +42,7 @@ namespace NzbDrone.Core.Extras.Metadata
                                IMediaFileAttributeService mediaFileAttributeService,
                                IMetadataFileService metadataFileService,
                                IAlbumService albumService,
+                               IMediaFileService mediaFileService,
                                Logger logger)
             : base(configService, diskProvider, diskTransferService, logger)
         {
@@ -54,6 +56,7 @@ namespace NzbDrone.Core.Extras.Metadata
             _mediaFileAttributeService = mediaFileAttributeService;
             _metadataFileService = metadataFileService;
             _albumService = albumService;
+            _mediaFileService = mediaFileService;
             _logger = logger;
         }
 
@@ -77,6 +80,43 @@ namespace NzbDrone.Core.Extras.Metadata
                 var consumerFiles = GetMetadataFilesForConsumer(consumer, metadataFiles);
 
                 files.AddRange(ProcessArtistImages(consumer, artist, consumerFiles));
+            }
+
+            _metadataFileService.Upsert(files);
+
+            return files;
+        }
+
+        public override IEnumerable<ExtraFile> CreateAfterAlbumCoverUpdate(Artist artist, Album album)
+        {
+            var metadataFiles = _metadataFileService.GetFilesByArtist(artist.Id);
+            _cleanMetadataService.Clean(artist);
+
+            if (!_diskProvider.FolderExists(artist.Path))
+            {
+                _logger.Info("Artist folder does not exist, skipping album metadata image creation");
+                return Enumerable.Empty<MetadataFile>();
+            }
+
+            // Determine the album folder path from the first track file
+            var albumFiles = _mediaFileService.GetFilesByAlbum(album.Id);
+            var albumFolder = albumFiles.Select(f => Path.GetDirectoryName(f.Path))
+                                         .Distinct()
+                                         .FirstOrDefault();
+
+            if (albumFolder.IsNullOrWhiteSpace())
+            {
+                _logger.Debug("No album folder found for {0}, skipping album image creation", album);
+                return Enumerable.Empty<MetadataFile>();
+            }
+
+            var files = new List<MetadataFile>();
+
+            foreach (var consumer in _metadataFactory.Enabled())
+            {
+                var consumerFiles = GetMetadataFilesForConsumer(consumer, metadataFiles);
+
+                files.AddRange(ProcessAlbumImages(consumer, artist, album, albumFolder, consumerFiles));
             }
 
             _metadataFileService.Upsert(files);

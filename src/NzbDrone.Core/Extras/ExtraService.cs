@@ -140,6 +140,11 @@ namespace NzbDrone.Core.Extras
                 foreach (var extraFileManager in _extraFileManagers)
                 {
                     extraFileManager.CreateAfterMediaCoverUpdate(artist);
+
+                    if (message.Album != null)
+                    {
+                        extraFileManager.CreateAfterAlbumCoverUpdate(artist, message.Album);
+                    }
                 }
             }
         }

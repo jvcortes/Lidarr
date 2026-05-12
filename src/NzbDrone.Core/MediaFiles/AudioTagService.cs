@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using NLog;
 using NzbDrone.Common.Disk;
+using NzbDrone.Common.Extensions;
 using NzbDrone.Common.Instrumentation.Extensions;
 using NzbDrone.Core.Configuration;
 using NzbDrone.Core.MediaCover;
@@ -116,10 +118,27 @@ namespace NzbDrone.Core.MediaFiles
 
                 if (_configService.EmbedCoverArt)
                 {
-                    var cover = album.Images.FirstOrDefault(x => x.CoverType == MediaCoverTypes.Cover);
-                    if (cover != null)
+                    // Use the user-selected cover URL's extension when set, so the path
+                    // matches what EnsureAlbumCovers actually downloaded.  Fall back to
+                    // album.Images (SkyHook) only when no override is in effect.
+                    string coverExtension;
+                    if (album.UserSelectedCoverUrl.IsNotNullOrWhiteSpace())
                     {
-                        imageFile = _mediaCoverService.GetCoverPath(album.Id, MediaCoverEntity.Album, cover.CoverType, cover.Extension, null);
+                        coverExtension = Path.GetExtension(album.UserSelectedCoverUrl);
+                        if (coverExtension.IsNullOrWhiteSpace())
+                        {
+                            coverExtension = ".jpg";
+                        }
+                    }
+                    else
+                    {
+                        var cover = album.Images.FirstOrDefault(x => x.CoverType == MediaCoverTypes.Cover);
+                        coverExtension = cover?.Extension;
+                    }
+
+                    if (coverExtension.IsNotNullOrWhiteSpace())
+                    {
+                        imageFile = _mediaCoverService.GetCoverPath(album.Id, MediaCoverEntity.Album, MediaCoverTypes.Cover, coverExtension, null);
                         _logger.Trace("Embedding: {0}", imageFile);
                         var fileInfo = _diskProvider.GetFileInfo(imageFile);
                         if (fileInfo.Exists)
