@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -48,17 +49,23 @@ namespace NzbDrone.Core.MediaCover
                 return new List<CoverArtCandidate>();
             }
 
-            // Fan out to all providers in parallel
+            // Fan out to all providers in parallel with a hard ceiling
             var tasks = enabledProviders.Select(provider => Task.Run(() =>
             {
                 _logger.Debug("Fetching cover art candidates from {0}", provider.Name);
                 return provider.GetCandidates(artist, albumTitle, foreignAlbumId, foreignReleaseIds);
             })).ToArray();
 
-            Task.WaitAll(tasks);
+            var completed = Task.WaitAll(tasks, TimeSpan.FromSeconds(15));
+            if (!completed)
+            {
+                _logger.Warn("Cover art provider queries did not complete within 15 seconds; returning partial results");
+            }
 
-            // Merge results from all providers
-            var all = tasks.SelectMany(t => t.Result).ToList();
+            // Merge results from completed tasks only
+            var all = tasks.Where(t => t.IsCompletedSuccessfully)
+                .SelectMany(t => t.Result)
+                .ToList();
 
             // Deduplicate by exact ImageUrl
             var seen = new HashSet<string>();

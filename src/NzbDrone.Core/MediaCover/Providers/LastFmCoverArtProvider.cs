@@ -19,13 +19,14 @@ namespace NzbDrone.Core.MediaCover.Providers
     {
         // Hash that appears in Last.fm's generic "no image" placeholder URL
         private const string PlaceholderHash = "2a96cbd8b46e442fc41c2b86b821562f";
+        private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
 
         private readonly IHttpClient _httpClient;
         private readonly IConfigService _configService;
         private readonly Logger _logger;
 
         public string Name => "LastFm";
-        public bool IsEnabled => _configService.CoverArtLastFmApiKey.IsNotNullOrWhiteSpace();
+        public bool IsEnabled => _configService.EnableCoverArtLastFm && _configService.CoverArtLastFmApiKey.IsNotNullOrWhiteSpace();
 
         public LastFmCoverArtProvider(IHttpClient httpClient, IConfigService configService, Logger logger)
         {
@@ -53,6 +54,7 @@ namespace NzbDrone.Core.MediaCover.Providers
 
                 var request = new HttpRequest(url);
                 request.SuppressHttpError = true;
+                request.RequestTimeout = RequestTimeout;
 
                 var response = _httpClient.Get<LastFmSearchResponse>(request);
 

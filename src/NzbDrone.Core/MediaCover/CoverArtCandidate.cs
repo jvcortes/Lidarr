@@ -5,8 +5,7 @@ namespace NzbDrone.Core.MediaCover
     /// <summary>
     /// A single cover art image candidate returned by a provider.
     /// ImageUrl and ThumbnailUrl are remote URLs from the provider's CDN.
-    /// The API layer rewrites ThumbnailUrl to the local proxy endpoint before
-    /// sending the response to the browser.
+    /// ThumbnailUrl is returned directly to the UI without proxying.
     /// </summary>
     public class CoverArtCandidate
     {

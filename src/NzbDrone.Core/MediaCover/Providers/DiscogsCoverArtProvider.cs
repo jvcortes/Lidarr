@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 using NLog;
 using NzbDrone.Common.Extensions;
@@ -24,13 +25,14 @@ namespace NzbDrone.Core.MediaCover.Providers
         private const string SearchUrl = "https://api.discogs.com/database/search";
         private const string ReleaseUrl = "https://api.discogs.com/releases/{0}";
         private const int MaxSearchResults = 5;
+        private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
 
         private readonly IHttpClient _httpClient;
         private readonly IConfigService _configService;
         private readonly Logger _logger;
 
         public string Name => "Discogs";
-        public bool IsEnabled => _configService.CoverArtDiscogsToken.IsNotNullOrWhiteSpace();
+        public bool IsEnabled => _configService.EnableCoverArtDiscogs && _configService.CoverArtDiscogsToken.IsNotNullOrWhiteSpace();
 
         public DiscogsCoverArtProvider(IHttpClient httpClient, IConfigService configService, Logger logger)
         {
@@ -50,14 +52,13 @@ namespace NzbDrone.Core.MediaCover.Providers
                 var token = _configService.CoverArtDiscogsToken;
                 var searchResults = SearchReleases(artist, album, token);
 
-                var candidates = new List<CoverArtCandidate>();
-                foreach (var result in searchResults.Take(MaxSearchResults))
-                {
-                    var releaseImages = FetchReleaseImages(result.Id, result.Title, token);
-                    candidates.AddRange(releaseImages);
-                }
+                var tasks = searchResults.Take(MaxSearchResults)
+                    .Select(r => Task.Run(() => FetchReleaseImages(r.Id, r.Title, token)))
+                    .ToArray();
 
-                return candidates;
+                Task.WaitAll(tasks);
+
+                return tasks.SelectMany(t => t.Result).ToList();
             }
             catch (Exception ex)
             {
@@ -74,6 +75,7 @@ namespace NzbDrone.Core.MediaCover.Providers
 
             var request = new HttpRequest(url);
             request.SuppressHttpError = true;
+            request.RequestTimeout = RequestTimeout;
 
             var response = _httpClient.Get<DiscogsSearchResponse>(request);
 
@@ -91,6 +93,7 @@ namespace NzbDrone.Core.MediaCover.Providers
             var url = $"{string.Format(ReleaseUrl, releaseId)}?token={token}";
             var request = new HttpRequest(url);
             request.SuppressHttpError = true;
+            request.RequestTimeout = RequestTimeout;
 
             var response = _httpClient.Get<DiscogsRelease>(request);
 
@@ -105,7 +108,7 @@ namespace NzbDrone.Core.MediaCover.Providers
                 {
                     Source = Name,
                     ImageUrl = i.Uri,
-                    ThumbnailUrl = i.Uri150.IsNotNullOrWhiteSpace() ? i.Uri150 : i.Uri,
+                    ThumbnailUrl = i.Uri,
                     Width = i.Width > 0 ? (int?)i.Width : null,
                     Height = i.Height > 0 ? (int?)i.Height : null,
                     Types = new List<string> { MapDiscogsType(i.Type) },

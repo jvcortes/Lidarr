@@ -6,6 +6,7 @@ using Newtonsoft.Json;
 using NLog;
 using NzbDrone.Common.Extensions;
 using NzbDrone.Common.Http;
+using NzbDrone.Core.Configuration;
 
 namespace NzbDrone.Core.MediaCover.Providers
 {
@@ -16,18 +17,22 @@ namespace NzbDrone.Core.MediaCover.Providers
     /// </summary>
     public class ItunesCoverArtProvider : ICoverArtProvider
     {
+        private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
+
         private static readonly Regex ArtworkDimensionRegex =
             new Regex(@"\d+x\d+bb\.(jpg|png)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         private readonly IHttpClient _httpClient;
+        private readonly IConfigService _configService;
         private readonly Logger _logger;
 
         public string Name => "iTunes";
-        public bool IsEnabled => true;
+        public bool IsEnabled => _configService.EnableCoverArtItunes;
 
-        public ItunesCoverArtProvider(IHttpClient httpClient, Logger logger)
+        public ItunesCoverArtProvider(IHttpClient httpClient, IConfigService configService, Logger logger)
         {
             _httpClient = httpClient;
+            _configService = configService;
             _logger = logger;
         }
 
@@ -44,6 +49,7 @@ namespace NzbDrone.Core.MediaCover.Providers
                     $"https://itunes.apple.com/search?term={term}&entity=album&limit=25");
                 request.AllowAutoRedirect = true;
                 request.SuppressHttpError = true;
+                request.RequestTimeout = RequestTimeout;
 
                 var response = _httpClient.Get<ItunesSearchResponse>(request);
 
@@ -56,7 +62,8 @@ namespace NzbDrone.Core.MediaCover.Providers
                 foreach (var result in response.Resource.Results
                              .Where(r => r.ArtworkUrl100.IsNotNullOrWhiteSpace()))
                 {
-                    var thumbnail = result.ArtworkUrl100;
+                    var thumbnailRaw = result.ArtworkUrl100;
+                    var thumbnail = ArtworkDimensionRegex.Replace(thumbnailRaw, "600x600bb.$1");
                     var fullRes = ArtworkDimensionRegex.Replace(result.ArtworkUrl100, "3000x3000bb.$1");
 
                     candidates.Add(new CoverArtCandidate

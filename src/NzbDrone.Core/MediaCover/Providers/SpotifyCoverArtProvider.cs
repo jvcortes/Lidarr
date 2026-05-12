@@ -26,6 +26,7 @@ namespace NzbDrone.Core.MediaCover.Providers
     {
         private const string TokenUrl = "https://accounts.spotify.com/api/token";
         private const string SearchUrl = "https://api.spotify.com/v1/search";
+        private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
 
         private readonly IHttpClient _httpClient;
         private readonly IConfigService _configService;
@@ -39,6 +40,7 @@ namespace NzbDrone.Core.MediaCover.Providers
         public string Name => "Spotify";
 
         public bool IsEnabled =>
+            _configService.EnableCoverArtSpotify &&
             _configService.CoverArtSpotifyClientId.IsNotNullOrWhiteSpace() &&
             _configService.CoverArtSpotifyClientSecret.IsNotNullOrWhiteSpace();
 
@@ -68,6 +70,7 @@ namespace NzbDrone.Core.MediaCover.Providers
 
                 var request = new HttpRequest(url);
                 request.SuppressHttpError = true;
+                request.RequestTimeout = RequestTimeout;
                 request.Headers.Set("Authorization", $"Bearer {token}");
 
                 var response = _httpClient.Get<SpotifySearchResponse>(request);
@@ -101,7 +104,7 @@ namespace NzbDrone.Core.MediaCover.Providers
 
                     // Largest image first (Spotify returns them in descending size order)
                     var largest = item.Images.OrderByDescending(i => i.Width ?? 0).First();
-                    var thumbnail = item.Images.OrderBy(i => Math.Abs((i.Width ?? 0) - 300)).First();
+                    var thumbnail = item.Images.OrderBy(i => Math.Abs((i.Width ?? 0) - 500)).First();
 
                     candidates.Add(new CoverArtCandidate
                     {
@@ -162,6 +165,7 @@ namespace NzbDrone.Core.MediaCover.Providers
                 var request = new HttpRequest(TokenUrl);
                 request.Method = HttpMethod.Post;
                 request.SuppressHttpError = true;
+                request.RequestTimeout = RequestTimeout;
                 request.Headers.Set("Authorization", $"Basic {credentials}");
                 request.Headers.ContentType = "application/x-www-form-urlencoded";
                 request.SetContent("grant_type=client_credentials");

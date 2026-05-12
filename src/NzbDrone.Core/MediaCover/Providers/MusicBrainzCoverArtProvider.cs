@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 using NLog;
 using NzbDrone.Common.Cache;
 using NzbDrone.Common.Extensions;
 using NzbDrone.Common.Http;
+using NzbDrone.Core.Configuration;
 
 namespace NzbDrone.Core.MediaCover.Providers
 {
@@ -27,15 +29,17 @@ namespace NzbDrone.Core.MediaCover.Providers
 
         private readonly IHttpClient _httpClient;
         private readonly ICached<List<CoverArtCandidate>> _cache;
+        private readonly IConfigService _configService;
         private readonly Logger _logger;
 
         public string Name => "MusicBrainz";
-        public bool IsEnabled => true;
+        public bool IsEnabled => _configService.EnableCoverArtMusicBrainz;
 
-        public MusicBrainzCoverArtProvider(IHttpClient httpClient, ICacheManager cacheManager, Logger logger)
+        public MusicBrainzCoverArtProvider(IHttpClient httpClient, ICacheManager cacheManager, IConfigService configService, Logger logger)
         {
             _httpClient = httpClient;
             _cache = cacheManager.GetCache<List<CoverArtCandidate>>(GetType());
+            _configService = configService;
             _logger = logger;
         }
 
@@ -64,17 +68,17 @@ namespace NzbDrone.Core.MediaCover.Providers
                 return images;
             }
 
-            // Fallback: per-release queries using IDs already in the DB
+            // Fallback: per-release queries using IDs already in the DB, fanned out in parallel
             _logger.Debug("MusicBrainz release-group CAA query returned no results for {0}; falling back to per-release queries", foreignAlbumId);
 
-            var results = new List<CoverArtCandidate>();
-            foreach (var releaseId in foreignReleaseIds ?? Enumerable.Empty<string>())
-            {
-                var releaseImages = FetchFromRelease(releaseId);
-                results.AddRange(releaseImages);
-            }
+            var releaseIds = (foreignReleaseIds ?? Enumerable.Empty<string>()).Take(10).ToList();
+            var tasks = releaseIds
+                .Select(id => Task.Run(() => FetchFromRelease(id)))
+                .ToArray();
 
-            return results;
+            Task.WaitAll(tasks);
+
+            return tasks.SelectMany(t => t.Result).ToList();
         }
 
         private List<CoverArtCandidate> FetchFromReleaseGroup(string foreignAlbumId)
