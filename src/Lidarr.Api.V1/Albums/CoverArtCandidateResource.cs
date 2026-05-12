@@ -5,8 +5,8 @@ namespace Lidarr.Api.V1.Albums
 {
     /// <summary>
     /// A single cover art candidate returned by GET /api/v1/albums/{id}/coverartcandidates.
-    /// ThumbnailUrl is a proxied local URL (/MediaCover/proxy?url=…) so the browser
-    /// can display it without CORS restrictions.
+    /// ThumbnailUrl is a direct remote CDN URL from the provider (e.g. iTunes, CAA, Discogs,
+    /// Spotify, Last.fm) so the browser can load it without proxying through Lidarr.
     /// </summary>
     public class CoverArtCandidateResource : RestResource
     {
