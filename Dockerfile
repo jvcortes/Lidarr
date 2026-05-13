@@ -18,7 +18,7 @@ RUN yarn install --frozen-lockfile --network-timeout 120000 && \
 RUN dotnet publish src/NzbDrone.Console/Lidarr.Console.csproj \
         -c Release -r linux-x64 --self-contained true -p:Platform=Posix && \
     dotnet publish src/NzbDrone.Update/Lidarr.Update.csproj \
-        -c Release -r linux-x64 --self-contained true -p:Platform=Posix
+        -c Release -r linux-x64 -f net8.0 --self-contained true -p:Platform=Posix
 
 # Assemble package
 RUN mkdir -p /output/Lidarr.Update && \
