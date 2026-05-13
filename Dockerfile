@@ -15,7 +15,10 @@ RUN yarn install --frozen-lockfile --network-timeout 120000 && \
     yarn run build --env production
 
 # Build self-contained backend for linux-x64 only
+# NzbDrone.Mono is not a dependency of Console but AssemblyLoader scans for it at runtime
 RUN dotnet publish src/NzbDrone.Console/Lidarr.Console.csproj \
+        -c Release -r linux-x64 --self-contained true -p:Platform=Posix && \
+    dotnet publish src/NzbDrone.Mono/Lidarr.Mono.csproj \
         -c Release -r linux-x64 --self-contained true -p:Platform=Posix && \
     dotnet publish src/NzbDrone.Update/Lidarr.Update.csproj \
         -c Release -r linux-x64 -f net8.0 --self-contained true -p:Platform=Posix
