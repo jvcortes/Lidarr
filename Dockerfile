@@ -14,7 +14,24 @@ COPY . .
 # required by global.json. Remove it from the solution before building.
 RUN dotnet sln src/Lidarr.sln remove src/NzbDrone.Core.Test/Lidarr.Core.Test.csproj
 
-RUN ./build.sh --backend --frontend --packages
+# Build backend for linux-x64 only (avoids failures building for win/osx/arm targets)
+RUN ./build.sh --backend -r linux-x64 -f net8.0
+
+# Build frontend
+RUN ./build.sh --frontend
+
+# Assemble the linux-x64 package (mirrors what build.sh --packages does for PackageLinux)
+RUN mkdir -p _artifacts/linux-x64/net8.0/Lidarr && \
+    cp -r _output/net8.0/linux-x64/publish/* _artifacts/linux-x64/net8.0/Lidarr/ && \
+    cp -r _output/Lidarr.Update/net8.0/linux-x64/publish _artifacts/linux-x64/net8.0/Lidarr/Lidarr.Update && \
+    cp -r _output/UI _artifacts/linux-x64/net8.0/Lidarr/ && \
+    cp LICENSE.md _artifacts/linux-x64/net8.0/Lidarr/ && \
+    rm -f _artifacts/linux-x64/net8.0/Lidarr/ServiceUninstall.* \
+          _artifacts/linux-x64/net8.0/Lidarr/ServiceInstall.* \
+          _artifacts/linux-x64/net8.0/Lidarr/Lidarr.Windows.* && \
+    cp _artifacts/linux-x64/net8.0/Lidarr/Lidarr.Mono.* _artifacts/linux-x64/net8.0/Lidarr/Lidarr.Update/ && \
+    cp _artifacts/linux-x64/net8.0/Lidarr/Mono.Posix.NETStandard.* _artifacts/linux-x64/net8.0/Lidarr/Lidarr.Update/ && \
+    cp _artifacts/linux-x64/net8.0/Lidarr/libMonoPosixHelper.* _artifacts/linux-x64/net8.0/Lidarr/Lidarr.Update/
 
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0-bookworm-slim
